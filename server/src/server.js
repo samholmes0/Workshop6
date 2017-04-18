@@ -5,8 +5,6 @@ var app = express();
 
 //import reversestring
 var utils = require('./util');
-var reverseString = utils.reverseString;
-
 //import middleware to handle requests that identify as text
 var bodyParser = require('body-parser');
 app.use(bodyParser.text());

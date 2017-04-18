@@ -9,6 +9,7 @@ import FeedItem from './components/feeditem';
 import {hideElement} from './util';
 import {searchForFeedItems, deleteFeedItem} from './server';
 import { IndexRoute, Router, Route, hashHistory } from 'react-router'
+import ErrorBanner from './components/errorbanner'
 
 /**
  * A fake profile page.
@@ -94,28 +95,8 @@ class SearchResults extends React.Component {
   componentDidMount() {
     this.refresh();
   }
-  
-  render() {
-    return (
-      <div>
-        <h2>Search Results for {this.props.searchTerm}</h2>
-        <div className={hideElement(this.state.loaded || this.state.invalidSearch)}>Search results are loading...</div>
-        <div className={hideElement(!this.state.invalidSearch)}>Invalid search query.</div>
-        <div className={hideElement(!this.state.loaded)}>
-          <div>Found {this.state.results.length} results.</div>
-          {
-            this.state.results.map((feedItem) => {
-              return (
-                <FeedItem key={feedItem._id} data={feedItem} onDelete={() => this.deleteFeedItem(feedItem._id)} />
-              )
-            })
-          }
-        </div>
-      </div>
-    );
-  }
 }
-
+  
 
 /**
  * The primary component in our application. Handles the overall layout
@@ -124,6 +105,7 @@ class SearchResults extends React.Component {
  * around the application.
  */
 class App extends React.Component {
+
   render() {
     // If there's no query input to this page (e.g. /foo instead of /foo?bar=4),
     // query may be undefined. We have to check for this, otherwise
@@ -137,6 +119,11 @@ class App extends React.Component {
       <div>
         <NavBar searchTerm={searchTerm} />
         <div className="container">
+          <div className="row">
+            <div className="col-md-12">
+              <ErrorBanner />
+            </div>
+          </div>
           <div className="row">
             <div className="col-md-2 fb-left-sidebar">
               <LeftSideBar />
@@ -153,6 +140,7 @@ class App extends React.Component {
       </div>
     )
   }
+  
 }
 
 ReactDOM.render((
