@@ -17,6 +17,7 @@ app.use(express.static('../client/build'));
 
 //schemas
 var StatusUpdateSchema = require('./schemas/statusupdate.json');
+var CommentSchema = require('./schemas/comment.json');
 
 //schema validation methods
 var database = require('./database');
@@ -31,7 +32,8 @@ var addDocument = database.addDocument;
 
 
 /**
- * Get the feed data for a particular user.
+ * Get the user ID from a token. Returns -1 (an invalid ID) 
+ * if it fails.
  */
 function getUserIdFromToken(authorizationLine) {
   try {
@@ -105,7 +107,7 @@ function getFeedItemSync(feedItemId) {
   // FeedItems in the DB, we would
   // need to check the type and have logic for each type.
   feedItem.contents.author = readDocument('users', 
-	                                      feedItem.contents.author);
+                                        feedItem.contents.author);
   // Resolve comment author.
   feedItem.comments.forEach((comment) => {
     comment.author = readDocument('users', comment.author);
@@ -124,6 +126,47 @@ function getFeedData(user) {
   feedData.contents = feedData.contents.map(getFeedItemSync);
   // Return FeedData with resolved references.
   return feedData;
+}
+
+/**
+ * Adds a new status update to the database.
+ */
+function postStatusUpdate(user, location, contents) {
+  // If we were implementing this for real on an actual server, we would check
+  // that the user ID is correct & matches the authenticated user. But since
+  // we're mocking it, we can be less strict.
+
+  // Get the current UNIX time.
+  var time = new Date().getTime();
+  // The new status update. The database will assign the ID for us.
+  var newStatusUpdate = {
+    "likeCounter": [],
+    "type": "statusUpdate",
+    "contents": {
+      "author": user,
+      "postDate": time,
+      "location": location,
+      "contents": contents,
+      "likeCounter": []
+    },
+    // List of comments on the post
+    "comments": []
+  };
+
+  // Add the status update to the database.
+  // Returns the status update w/ an ID assigned.
+  newStatusUpdate = addDocument('feedItems', newStatusUpdate);
+
+  // Add the status update reference to the front of the current user's feed.
+  var userData = readDocument('users', user);
+  var feedData = readDocument('feeds', userData.feed);
+  feedData.contents.unshift(newStatusUpdate._id);
+
+  // Update the feed object.
+  writeDocument('feeds', feedData);
+
+  // Return the newly-posted object.
+  return newStatusUpdate;
 }
 
 /**
@@ -302,6 +345,81 @@ app.delete('/feeditem/:feeditemid/likelist/:userid', function(req, res) {
     res.status(401).end();
   }
 });
+
+
+
+// Post a comment
+app.post('/feeditem/:feeditemid/comments', validate({ body: CommentSchema }), function(req, res) {
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var comment = req.body;
+  var author = req.body.author;
+  var feedItemId = req.params.feeditemid;
+  if (fromUser === author) {
+    var feedItem = readDocument('feedItems', feedItemId);
+    // Initialize likeCounter to empty.
+    comment.likeCounter = [];
+    // Push returns the new length of the array.
+    // The index of the new element is the length of the array minus 1.
+    // Example: [].push(1) returns 1, but the index of the new element is 0.
+    var index = feedItem.comments.push(comment) - 1;
+    writeDocument('feedItems', feedItem);
+    // 201: Created.
+    res.status(201);
+    res.set('Location', '/feeditem/' + feedItemId + "/comments/" + index);
+    // Return a resolved version of the feed item.
+    res.send(getFeedItemSync(feedItemId));
+  } else {
+    // Unauthorized.
+    res.status(401).end();
+  }
+});
+
+
+app.put('/feeditem/:feeditemid/comments/:commentindex/likelist/:userid', function(req, res) {
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var userId = parseInt(req.params.userid, 10);
+  var feedItemId = parseInt(req.params.feeditemid, 10);
+  var commentIdx = parseInt(req.params.commentindex, 10);
+  // Only a user can mess with their own like.
+  if (fromUser === userId) {
+    var feedItem = readDocument('feedItems', feedItemId);
+    var comment = feedItem.comments[commentIdx];
+    // Only change the likeCounter if the user isn't in it.
+    if (comment.likeCounter.indexOf(userId) === -1) {
+      comment.likeCounter.push(userId);
+    }
+    writeDocument('feedItems', feedItem);
+    comment.author = readDocument('users', comment.author);
+    // Send back the updated comment.
+    res.send(comment);
+  } else {
+    // Unauthorized.
+    res.status(401).end();
+  }
+});
+
+app.delete('/feeditem/:feeditemid/comments/:commentindex/likelist/:userid', function(req, res) {
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var userId = parseInt(req.params.userid, 10);
+  var feedItemId = parseInt(req.params.feeditemid, 10);
+  var commentIdx = parseInt(req.params.commentindex, 10);
+  // Only a user can mess with their own like.
+  if (fromUser === userId) {
+    var feedItem = readDocument('feedItems', feedItemId);
+    var comment = feedItem.comments[commentIdx];
+    var userIndex = comment.likeCounter.indexOf(userId);
+    if (userIndex !== -1) {
+      comment.likeCounter.splice(userIndex, 1);
+      writeDocument('feedItems', feedItem);
+    }
+    comment.author = readDocument('users', comment.author);
+    res.send(comment);
+  } else {
+    // Unauthorized.
+    res.status(401).end();
+  }
+});
+
 
 // Search for feed item
 app.post('/search', function(req, res) {

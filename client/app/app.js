@@ -152,4 +152,4 @@ ReactDOM.render((
       <Route path="search" component={SearchResultsPage} />
     </Route>
   </Router>
-),document.getElementById('main_container'));
+), document.getElementById('main_container'));
